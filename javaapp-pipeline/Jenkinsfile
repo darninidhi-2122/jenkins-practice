@@ -1,94 +1,105 @@
 pipeline {
-    agent {label 'agent'}
+    agent { label 'agent1-ubuntu' }
+
+    parameters {
+        choice choices: ['javaapp-pipeline', 'javaapp-standalone', 'javaapp-tomcat'], name: 'folder'
+        booleanParam defaultValue: true, description: 'enable to deploy the package on an agent ', name: 'DEPLOY'
+    }
 
     stages {
+
+        /* ----------------------------
+         * COMMON FOR ALL BRANCHES
+         * ---------------------------- */
+
         stage('Checkout') {
             steps {
-                git url: 'https://github.com/artisantek/jenkins.git'
+                git 'https://github.com/darninidhi-2122/jenkins-practice.git'
             }
         }
 
-        stage('Tests') {
+        stage('Quality Checks in Parallel') {
             parallel {
+
                 stage('Unit Tests') {
                     steps {
-                        dir('javaapp-pipeline') {
-                            sh 'mvn clean test'
+                        dir("${folder}") {
+                            sh "mvn clean test"
                         }
                     }
                 }
+
                 stage('Trivy Scan') {
                     steps {
-                        dir('javaapp-pipeline') {
-                            sh '''
-                                wget -q https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl -O html.tpl
-                                trivy fs --format template --template "@html.tpl" -o report.html .
-                            '''
-                        }
+                        sh """
+                            wget -q -O html.tpl https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl
+                            trivy fs . --format template --template "@html.tpl" -o report.html
+                        """
+                    }
+                }
+
+            }
+        }
+
+        /* ----------------------------
+         * ONLY FOR main BRANCH
+         * ---------------------------- */
+
+        stage('Build') {
+            when { branch "main" }
+            steps {
+                dir("${folder}") {
+                    sh "mvn clean package -DskipTests"
+                }
+            }
+        }
+
+        stage('SonarQube analysis') {
+            when { branch "main" }
+            steps {
+                dir("${folder}") {
+                    withSonarQubeEnv('sonar') {
+                        sh """
+                            mvn clean verify sonar:sonar \
+                            -Dsonar.projectKey=java-app \
+                            -Dsonar.projectName=java-app
+                        """
                     }
                 }
             }
         }
 
-        // stage('Sonar Analysis') {
-        //     steps {
-        //         dir('javaapp-pipeline') {
-        //             withSonarQubeEnv('sonar') {
-        //                 sh '''
-        //                     mvn clean verify sonar:sonar \
-        //                     -Dsonar.projectKey=java-app \
-        //                     -Dsonar.projectName=java-app 
-        //                 '''
-        //             }
-        //         }
-        //     }
-        // }
+        /* ----------------------------
+         * APPROVAL STEP
+         * ---------------------------- */
 
-        stage('Build') {
-            steps {
-                dir('javaapp-pipeline') {
-                    sh 'mvn clean package'
-                }
-            }
-        }
-
-        stage('Publish') {
+        stage('Approval for Deployment') {
+            when { branch "main" }
             steps {
                 script {
-                    def GROUP_ID = sh(script: "mvn help:evaluate -Dexpression=project.groupId -q -DforceStdout -f javaapp-pipeline/pom.xml", returnStdout: true).trim()
-                    def ARTIFACT_ID = sh(script: "mvn help:evaluate -Dexpression=project.artifactId -q -DforceStdout -f javaapp-pipeline/pom.xml", returnStdout: true).trim()
-                    def VERSION = sh(script: "mvn help:evaluate -Dexpression=project.version -q -DforceStdout -f javaapp-pipeline/pom.xml", returnStdout: true).trim()
-                    def GROUP_PATH = sh(script: "echo '${GROUP_ID}' | tr '.' '/'", returnStdout: true).trim()
-                    def TARGET_PATH = "maven/${GROUP_PATH}/${ARTIFACT_ID}/${VERSION}/"
-                    def JAR_PATH = "${ARTIFACT_ID}-${VERSION}.jar"
-        
-                    dir('javaapp-pipeline/target') {
-                        rtUpload(
-                            serverId: 'jfrog',
-                            spec: """{
-                                "files": [
-                                    {
-                                        "pattern": "${JAR_PATH}",
-                                        "target": "${TARGET_PATH}"
-                                    }
-                                ]
-                            }"""
+                    timeout(time: 5, unit: 'MINUTES') {
+                        input(
+                            message: "Approve Deployment?",
+                            ok: "Deploy Now",
+                            submitter: "darninidhi-2122"
                         )
                     }
                 }
             }
         }
 
-        stage('Deploy') {
+        stage('Deploy to Server') {
+            when { allOf { branch "main"; expression { params.DEPLOY == true } } }
             steps {
-                dir('javaapp-pipeline/target') {
+                dir("${folder}/target") {
                     sh '''
                         if pgrep -f "java -jar java-sample-21-1.0.0.jar" > /dev/null; then
                             pkill -f "java -jar java-sample-21-1.0.0.jar"
-                            echo "App was running and has been killed."
+                            echo "app was running and has been killed"
                         else
-                            echo "App is not running."
+                            echo "app is not running"
                         fi
+
                         JENKINS_NODE_COOKIE=dontKillMe nohup java -jar java-sample-21-1.0.0.jar > app.log 2>&1 &
                     '''
                 }
@@ -96,15 +107,18 @@ pipeline {
         }
 
     }
-    
+
     post {
-      always {
-        cleanWs()
-      }
-      failure {
-        emailext attachLog: true, body: 'Pipeline Failed, Please check the logs', subject: 'Job Failed', to: 'artisantek.adithya@gmail.com'
-      }
+        always {
+            echo "Cleaning workspace..."
+            cleanWs()
+        }
+        success {
+            echo 'Pipeline succeeded!'
+        }
+        failure {
+            echo 'Pipeline failed!'
+            emailext body: 'Build failed', subject: 'Build Failure', to: 'darni.nidhi@gmail.com'
+        }
     }
-
-
 }
