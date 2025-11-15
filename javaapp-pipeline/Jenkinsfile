@@ -87,6 +87,7 @@ pipeline {
         }
 
         stage('Deploy to Server') {
+             when { branch 'master' }
             steps {
                 dir("${folder}/target") {
                     sh '''
