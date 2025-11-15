@@ -84,6 +84,9 @@ pipeline {
         }
 
         stage('Deploy to Server') {
+            when {
+                expression { params.DEPLOY == true }
+            }
             steps {
                 dir("${folder}/target") {
                     sh '''
