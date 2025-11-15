@@ -7,11 +7,6 @@ pipeline {
     }
 
     stages {
-
-        /* ----------------------------
-         * COMMON FOR ALL BRANCHES
-         * ---------------------------- */
-
         stage('Checkout') {
             steps {
                 git 'https://github.com/darninidhi-2122/jenkins-practice.git'
@@ -47,13 +42,9 @@ pipeline {
             }
         }
 
-        /* ----------------------------
-         * ONLY FOR main BRANCH
-         * ---------------------------- */
-
-        stage('Build') {
-            when { branch "master" }
-            steps {
+       
+       stage('Build') {
+           steps {
                 dir("${folder}") {
                     sh "mvn clean package -DskipTests"
                 }
@@ -61,7 +52,6 @@ pipeline {
         }
 
         stage('SonarQube analysis') {
-            when { branch "master" }
             steps {
                 dir("${folder}") {
                     withSonarQubeEnv('sonar') {
@@ -80,7 +70,6 @@ pipeline {
          * ---------------------------- */
 
         stage('Approval for Deployment') {
-            when { branch "master" }
             steps {
                 script {
                     timeout(time: 5, unit: 'MINUTES') {
@@ -95,7 +84,6 @@ pipeline {
         }
 
         stage('Deploy to Server') {
-            when { allOf { branch "master"; expression { params.DEPLOY == true } } }
             steps {
                 dir("${folder}/target") {
                     sh '''
