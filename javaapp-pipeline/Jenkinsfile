@@ -18,6 +18,12 @@ pipeline {
             }
         }
 
+        stage('Debug Parameters') {
+           steps {
+              echo "Folder param = ${params.folder}"
+              echo "Deploy param = ${params.DEPLOY}"
+    }
+}
         stage('Quality Checks in Parallel') {
             parallel {
 
