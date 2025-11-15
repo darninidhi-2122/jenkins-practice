@@ -52,7 +52,7 @@ pipeline {
          * ---------------------------- */
 
         stage('Build') {
-            when { branch "main" }
+            when { branch "master" }
             steps {
                 dir("${folder}") {
                     sh "mvn clean package -DskipTests"
@@ -61,7 +61,7 @@ pipeline {
         }
 
         stage('SonarQube analysis') {
-            when { branch "main" }
+            when { branch "master" }
             steps {
                 dir("${folder}") {
                     withSonarQubeEnv('sonar') {
@@ -80,7 +80,7 @@ pipeline {
          * ---------------------------- */
 
         stage('Approval for Deployment') {
-            when { branch "main" }
+            when { branch "master" }
             steps {
                 script {
                     timeout(time: 5, unit: 'MINUTES') {
@@ -95,7 +95,7 @@ pipeline {
         }
 
         stage('Deploy to Server') {
-            when { allOf { branch "main"; expression { params.DEPLOY == true } } }
+            when { allOf { branch "master"; expression { params.DEPLOY == true } } }
             steps {
                 dir("${folder}/target") {
                     sh '''
